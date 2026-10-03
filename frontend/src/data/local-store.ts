@@ -40,12 +40,18 @@ export function listRows(key: string): EntryRow[] {
   return allRows()[key] ?? []
 }
 
-export function saveRows(key: string, rows: EntryRow[]): void {
-  const next = { ...allRows(), [key]: rows }
-  cache = next
+// 多模块原子落库：把合并后的快照整体写进 localStorage，成功才换缓存；
+// 任何一步失败，缓存与存储都保持原样，报告、队伍与待办标记一起留在旧状态。
+export function saveRowsTx(writes: Record<string, EntryRow[]>): void {
+  const next = { ...allRows(), ...writes }
   if (typeof window !== 'undefined' && window.localStorage) {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
   }
+  cache = next
+}
+
+export function saveRows(key: string, rows: EntryRow[]): void {
+  saveRowsTx({ [key]: rows })
 }
 
 export function resetRows(key: string): EntryRow[] {
