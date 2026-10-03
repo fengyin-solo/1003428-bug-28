@@ -48,6 +48,31 @@ export function saveRows(key: string, rows: EntryRow[]): void {
   }
 }
 
+// 动作流转前调用：绕过内存缓存重新读 localStorage，
+// 让并发校验看到的是别的标签页已经落库的状态（先落库状态为准）。
+export function refreshRows(): Record<string, EntryRow[]> {
+  cache = readStorage()
+  return cache
+}
+
+// 一次把多个模块的行合并进同一份存储：单个 setItem 完成，要么都落库要么都不落。
+// 调用方必须保证在同一个同步函数里完成「读-校验-写」，浏览器不会让其他标签页插进来。
+export function saveModules(patch: Record<string, EntryRow[]>): void {
+  const next = { ...allRows(), ...patch }
+  cache = next
+  if (typeof window !== 'undefined' && window.localStorage) {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
+  }
+}
+
+// 失败回滚用：把动作前的整份快照写回缓存和 localStorage，报告、队伍、待办一起恢复。
+export function restoreRows(snapshot: Record<string, EntryRow[]>): void {
+  cache = snapshot
+  if (typeof window !== 'undefined' && window.localStorage) {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot))
+  }
+}
+
 export function resetRows(key: string): EntryRow[] {
   const rows = clone(SEED_ROWS[key] ?? [])
   saveRows(key, rows)

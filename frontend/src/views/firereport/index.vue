@@ -67,6 +67,34 @@
       <span>共 {{ total }} 条火情报告记录</span>
       <span v-if="errorMessage" class="error-text">{{ errorMessage }}</span>
     </footer>
+
+    <section class="dispatch-panel">
+      <h3>出警记录</h3>
+      <p class="page-desc">出动扑救自动登记出警记录并回写扑火队伍状态；改判误报会撤回队伍，历史出警归属保留。</p>
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>报告编号</th>
+            <th>出动队伍</th>
+            <th>出动时间</th>
+            <th>撤回时间</th>
+            <th>记录状态</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="record in dispatches" :key="String(record.id)">
+            <td>{{ record['报告编号'] }}</td>
+            <td>{{ record['队伍名称'] }}（{{ record['队伍编号'] }}）</td>
+            <td>{{ formatTime(record['出动时间']) }}</td>
+            <td>{{ record['撤回时间'] ? formatTime(record['撤回时间']) : '—' }}</td>
+            <td>{{ record.status }}</td>
+          </tr>
+          <tr v-if="!dispatches.length">
+            <td colspan="5" class="empty-state">暂无出警记录，确认火情后可出动扑救</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
   </section>
 </template>
 
@@ -75,6 +103,7 @@ import { computed, onMounted, ref } from 'vue'
 
 import {
   downloadEntries,
+  listDispatches,
   listEntries,
   moduleMeta,
   runAction as applyAction,
@@ -88,6 +117,7 @@ const statuses = ["待核实", "已确认", "已出警", "已扑灭", "误报"]
 const stats = [{"label": "今日报告数", "value": 0}, {"label": "已确认火情", "value": 0}, {"label": "扑救中火情", "value": 0}]
 
 const rows = ref<EntryRow[]>([])
+const dispatches = ref<EntryRow[]>([])
 const total = ref(0)
 const errorMessage = ref('')
 const filters = ref<Record<string, string>>({})
@@ -98,6 +128,11 @@ const statusSummary = computed(() =>
     count: rows.value.filter((row) => String(row.status) === status).length,
   })),
 )
+
+function formatTime(value: unknown): string {
+  const text = String(value ?? '')
+  return text ? text.replace('T', ' ').slice(0, 19) : '—'
+}
 
 function resetFilters() {
   filters.value = {}
@@ -113,13 +148,10 @@ function openCreate() {
 }
 
 function runAction(action: string, row: EntryRow) {
-  errorMessage.value = ''
   const result = applyAction(meta.key, Number(row.id), action)
-  if (!result.ok) {
-    errorMessage.value = result.message
-    return
-  }
+  // 失败也要刷新：并发或终态冲突时，把先落库的状态原样呈现出来。
   reload()
+  errorMessage.value = result.ok ? '' : result.message
 }
 
 function reload() {
@@ -128,6 +160,7 @@ function reload() {
     const payload = listEntries(meta.key, filters.value)
     rows.value = payload.items
     total.value = payload.total
+    dispatches.value = listDispatches()
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : '火情报告列表读取失败'
   }
